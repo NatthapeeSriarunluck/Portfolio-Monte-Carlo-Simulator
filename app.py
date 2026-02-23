@@ -34,7 +34,8 @@ except ValueError:
     st.stop()
 
 # Simulation Parameters
-forecast_years = st.sidebar.slider("Forecast Years (T)", 1, 30, 10)
+forecast_years = st.sidebar.slider("Forecast Years (Future)", 1, 30, 10)
+historical_years = st.sidebar.slider("Historical Data Lookback (Past Years)", 1, 30, 10)
 initial_investment = st.sidebar.number_input(
     "Initial Investment ($)", value=10000, step=1000
 )
@@ -67,9 +68,9 @@ if st.sidebar.button("Run Simulation"):
         # Use a reasonable lookback window (e.g., 5 years or same as forecast)
         # For better covariance estimation, 10 years is good
         end_date = pd.Timestamp.today().strftime("%Y-%m-%d")
-        start_date = (pd.Timestamp.today() - pd.DateOffset(years=10)).strftime(
-            "%Y-%m-%d"
-        )
+        start_date = (
+            pd.Timestamp.today() - pd.DateOffset(years=historical_years)
+        ).strftime("%Y-%m-%d")
 
         prices = get_stock_data(tickers, start_date, end_date)
 
@@ -94,6 +95,20 @@ if st.sidebar.button("Run Simulation"):
         if not tickers:
             st.error("No valid tickers remaining.")
             st.stop()
+
+        # Check effective data range (intersection of all assets)
+        valid_data = prices.dropna()
+        if valid_data.empty:
+            st.error(
+                "No overlapping data found for the selected tickers. They may not have traded simultaneously."
+            )
+            st.stop()
+
+        first_valid_date = pd.to_datetime(valid_data.index[0]).date()
+        if first_valid_date > pd.to_datetime(start_date).date():
+            st.info(
+                f"⚠️ Simulation uses data starting from **{first_valid_date}** (limited by the asset with the shortest history)."
+            )
 
         # 2. Run Simulation
         portfolio_paths = run_monte_carlo(
@@ -175,6 +190,9 @@ if st.sidebar.button("Run Simulation"):
 
         with st.expander("Show Raw Data Head"):
             st.write(prices.head())
+            st.caption(
+                "Note: 'None' values indicate missing data for that date (e.g., company not yet public)."
+            )
 
 else:
     st.info("Adjust settings in the sidebar and click 'Run Simulation' to start.")
